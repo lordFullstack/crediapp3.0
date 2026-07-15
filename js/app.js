@@ -13,25 +13,14 @@ let lastAbono = null;
 
 // ── INIT ──
 window.onload = () => {
-  // El PIN se inicializa primero y aislado: así el teclado numérico
-  // SIEMPRE aparece, incluso si algo más abajo falla.
-  try {
-    initPIN();
-  } catch (e) {
-    console.error('Error iniciando PIN:', e);
-  }
-
-  try {
-    cargarDB();
-    setFecha();
-    cargarConfigUI();
-    renderAll();
-    setDefaultFecha();
-    setDefaultTasa();
-    aplicarLogo();
-  } catch (e) {
-    console.error('Error inicializando la app:', e);
-  }
+  cargarDB();
+  setFecha();
+  cargarConfigUI();
+  renderAll();
+  setDefaultFecha();
+  setDefaultTasa();
+  aplicarLogo();
+  initPIN();
 };
 
 function setFecha() {
@@ -1100,20 +1089,10 @@ function renderPinPad() {
   }).join('');
 }
 
-const PIN_DESACTIVADO_TEMPORALMENTE = true; // ← poner en false para reactivar el PIN
-
 function initPIN() {
-  const modal = document.getElementById('modalPIN');
-
-  if (PIN_DESACTIVADO_TEMPORALMENTE) {
-    // PIN desactivado a propósito mientras se resuelve el bug del teclado.
-    // No renderiza el pad ni muestra el modal: acceso directo a la app.
-    if (modal) modal.classList.remove('open');
-    return;
-  }
-
   renderPinPad();
   const pin = localStorage.getItem('creditoapp_pin');
+  const modal = document.getElementById('modalPIN');
   const nombre = document.getElementById('pin-app-name');
   if (nombre) nombre.textContent = DB.config.nombre || 'CréditoApp';
 
