@@ -129,6 +129,19 @@
         </div>
       </div>
 
+      <!-- GRAFICO MENSUAL: CAPITAL + UTILIDAD -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Crecimiento de Capital y Utilidad</span>
+          <span style="font-size:11px;color:var(--muted)">Últimos 4 meses</span>
+        </div>
+        <div id="chart-mensual-wrap" style="padding:8px 4px"></div>
+        <div style="display:flex;gap:20px;justify-content:center;margin-top:8px;font-size:12px">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block"></span>Capital colocado</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block"></span>Utilidad (interés)</span>
+        </div>
+      </div>
+
       <!-- TABLA COBROS HOY -->
       <div class="card">
         <div class="card-header">
@@ -626,6 +639,7 @@
               <option value="diario">Diario</option>
               <option value="semanal">Semanal</option>
               <option value="quincenal">Quincenal</option>
+              <option value="mensual">Mensual</option>
             </select>
           </div>
           <div class="form-group">
@@ -821,6 +835,22 @@
       <div class="receipt-actions" style="margin-top:16px">
         <button class="btn btn-ghost btn-sm" style="flex:1" onclick="descargarRecibo()">⬇️ Descargar</button>
         <button class="btn btn-green btn-sm" style="flex:1" onclick="compartirWhatsApp()">📤 WhatsApp</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalCreditoNuevo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">✅ Crédito Registrado</span>
+      <button class="modal-close" onclick="closeModal('modalCreditoNuevo')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="receipt" id="credito-nuevo-content"></div>
+      <div class="receipt-actions" style="margin-top:16px">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="closeModal('modalCreditoNuevo')">Cerrar</button>
+        <button class="btn btn-green btn-sm" style="flex:1" onclick="compartirCreditoWhatsApp()">📤 Notificar por WhatsApp</button>
       </div>
     </div>
   </div>

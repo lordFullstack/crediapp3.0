@@ -96,7 +96,7 @@ function seedDemo() {
 // ════════════════════════════════════════
 //  LÓGICA FINANCIERA
 // ════════════════════════════════════════
-const DIAS_FREC = { diario: 1, semanal: 7, quincenal: 15 };
+const DIAS_FREC = { diario: 1, semanal: 7, quincenal: 15, mensual: 30 };
 
 function calcularCredito(monto, tasa, plazo, frecuencia) {
   // Tasa aplicada sobre el total del capital (sin importar plazo ni frecuencia)
@@ -150,7 +150,8 @@ function actualizarSemaforo(credito) {
   const TOL = {
     diario:    { amarillo: 1, naranja: 3, rojo: 4 },
     semanal:   { amarillo: 2, naranja: 6, rojo: 7 },
-    quincenal: { amarillo: 3, naranja: 9, rojo: 10 }
+    quincenal: { amarillo: 3, naranja: 9, rojo: 10 },
+    mensual:   { amarillo: 5, naranja: 15, rojo: 20 }
   };
 
   const t = TOL[credito.frecuenciaPago];
@@ -170,9 +171,97 @@ function actualizarTodosSemaforos() {
 // ════════════════════════════════════════
 //  RENDER
 // ════════════════════════════════════════
+function renderGraficoMensual() {
+  const wrap = document.getElementById('chart-mensual-wrap');
+  if (!wrap) return;
+
+  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const NUM_MESES = 4;
+  const ahora = new Date();
+
+  // Construir los últimos NUM_MESES meses (más antiguo -> más reciente)
+  const meses = [];
+  for (let i = NUM_MESES - 1; i >= 0; i--) {
+    const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+    meses.push({ anio: d.getFullYear(), mes: d.getMonth(), label: MESES[d.getMonth()] });
+  }
+
+  const serie = meses.map(m => {
+    const inicio = new Date(m.anio, m.mes, 1);
+    const fin    = new Date(m.anio, m.mes + 1, 1);
+
+    // Capital: monto prestado en créditos otorgados ese mes
+    const capital = DB.creditos
+      .filter(c => { const f = new Date(c.createdAt); return f >= inicio && f < fin; })
+      .reduce((s,c) => s + c.montoPrestado, 0);
+
+    // Utilidad: porción de interés realizado en los abonos cobrados ese mes.
+    // Bajo el modelo de tasa fija, cada abono trae la misma proporción interés/capital
+    // que el total del crédito: proporción = tasa / (100 + tasa)
+    const utilidad = DB.abonos
+      .filter(a => { const f = new Date(a.fechaPago); return f >= inicio && f < fin; })
+      .reduce((s,a) => {
+        const credito = DB.creditos.find(c => c.id === a.creditoId);
+        if (!credito) return s;
+        const proporcionInteres = credito.tasaInteres / (100 + credito.tasaInteres);
+        return s + (a.monto * proporcionInteres);
+      }, 0);
+
+    return { label: m.label, capital, utilidad };
+  });
+
+  const maxVal = Math.max(1, ...serie.map(s => Math.max(s.capital, s.utilidad)));
+  const W = 560, H = 200, padL = 50, padR = 20, padT = 20, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const stepX = plotW / (serie.length - 1 || 1);
+
+  const puntos = (key) => serie.map((s, i) => {
+    const x = padL + i * stepX;
+    const y = padT + plotH - (s[key] / maxVal) * plotH;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const gridLines = [0,0.25,0.5,0.75,1].map(f => {
+    const y = padT + plotH * (1 - f);
+    const val = Math.round(maxVal * f);
+    return `
+      <line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+      <text x="${padL-8}" y="${y+4}" font-size="9" fill="var(--muted)" text-anchor="end">${val >= 1000000 ? Math.round(val/1000000)+'M' : val >= 1000 ? Math.round(val/1000)+'k' : val}</text>
+    `;
+  }).join('');
+
+  const labelsX = serie.map((s,i) => {
+    const x = padL + i * stepX;
+    return `<text x="${x}" y="${H-8}" font-size="10" fill="var(--muted)" text-anchor="middle">${s.label}</text>`;
+  }).join('');
+
+  const dotsCapital = serie.map((s,i) => {
+    const x = padL + i * stepX, y = padT + plotH - (s.capital / maxVal) * plotH;
+    return `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--accent)"/>`;
+  }).join('');
+
+  const dotsUtilidad = serie.map((s,i) => {
+    const x = padL + i * stepX, y = padT + plotH - (s.utilidad / maxVal) * plotH;
+    return `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--green)"/>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+      ${gridLines}
+      <polyline points="${puntos('capital')}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+      <polyline points="${puntos('utilidad')}" fill="none" stroke="var(--green)" stroke-width="2.5"/>
+      ${dotsCapital}
+      ${dotsUtilidad}
+      ${labelsX}
+    </svg>
+  `;
+}
+
+
 function renderAll() {
   actualizarTodosSemaforos();
   renderDashboard();
+  renderGraficoMensual();
   renderCreditos();
   renderClientes();
   renderAbonos();
@@ -558,7 +647,59 @@ function guardarCredito() {
   renderAll();
   closeModal('modalCredito');
   limpiarFormCredito();
+  mostrarCreditoNuevo(credito.id);
   toast('✅ Crédito registrado');
+}
+
+function mostrarCreditoNuevo(creditoId) {
+  const credito = DB.creditos.find(c => c.id === creditoId);
+  const cliente = DB.clientes.find(c => c.id === credito.clienteId);
+  const frecLabel = { diario:'diaria', semanal:'semanal', quincenal:'quincenal', mensual:'mensual' }[credito.frecuenciaPago];
+
+  document.getElementById('credito-nuevo-content').innerHTML = `
+    <div class="receipt-header">
+      <div class="receipt-logo">💳 ${DB.config.nombre || 'CréditoApp'}</div>
+      <div class="receipt-sub">Nuevo Crédito Aprobado</div>
+    </div>
+    <hr class="receipt-divider">
+    <div class="receipt-row"><span class="receipt-key">Cliente</span><span class="receipt-val">${cliente.nombre}</span></div>
+    <div class="receipt-row"><span class="receipt-key">Monto prestado</span><span class="receipt-val">${fmt(credito.montoPrestado)}</span></div>
+    <div class="receipt-row"><span class="receipt-key">Tasa</span><span class="receipt-val">${credito.tasaInteres}%</span></div>
+    <div class="receipt-row"><span class="receipt-key">Cuota ${frecLabel}</span><span class="receipt-val">${fmt(credito.cuotaValor)}</span></div>
+    <div class="receipt-row"><span class="receipt-key">Plazo</span><span class="receipt-val">${credito.plazoCuotas} cuotas</span></div>
+    <hr class="receipt-divider">
+    <div class="receipt-row total"><span>Total a pagar</span><span>${fmt(credito.totalAPagar)}</span></div>
+    <hr class="receipt-divider">
+    <div style="text-align:center;font-size:10px;color:#94a3b8;font-family:sans-serif">
+      Generado por ${DB.config.nombre} • ${new Date().toLocaleString('es-CO')}
+    </div>
+  `;
+
+  currentCreditoId = credito.id;
+  openModal('modalCreditoNuevo');
+}
+
+function compartirCreditoWhatsApp() {
+  const credito = DB.creditos.find(c => c.id === currentCreditoId);
+  if (!credito) return;
+  const cliente = DB.clientes.find(c => c.id === credito.clienteId);
+  const frecLabel = { diario:'diaria', semanal:'semanal', quincenal:'quincenal', mensual:'mensual' }[credito.frecuenciaPago];
+
+  const msg = encodeURIComponent(
+    `✅ *Crédito Aprobado*\n` +
+    `📋 *${DB.config.nombre}*\n\n` +
+    `👤 Cliente: ${cliente.nombre}\n` +
+    `💰 Monto: ${fmt(credito.montoPrestado)}\n` +
+    `📈 Tasa: ${credito.tasaInteres}%\n` +
+    `💳 Cuota ${frecLabel}: ${fmt(credito.cuotaValor)}\n` +
+    `📆 Plazo: ${credito.plazoCuotas} cuotas\n` +
+    `💵 Total a pagar: ${fmt(credito.totalAPagar)}\n` +
+    `📅 Primer pago: ${new Date(credito.proximaCuota).toLocaleDateString('es-CO')}\n\n` +
+    `_Gracias por confiar en nosotros_ 🙏`
+  );
+
+  const tel = cliente.telefono.replace(/\D/g,'');
+  window.open(`https://wa.me/57${tel}?text=${msg}`, '_blank');
 }
 
 function openAbono(creditoId) {
@@ -724,7 +865,7 @@ function calcPreview() {
   const fv = new Date(fi);
   fv.setDate(fv.getDate() + cuotas * DIAS_FREC[frecuencia]);
 
-  const frecLabel = { diario:'diaria', semanal:'semanal', quincenal:'quincenal' }[frecuencia];
+  const frecLabel = { diario:'diaria', semanal:'semanal', quincenal:'quincenal', mensual:'mensual' }[frecuencia];
 
   document.getElementById('pv-frec-label').textContent  = frecLabel;
   document.getElementById('pv-cuota').textContent       = fmt(calc.cuotaValor);
@@ -1334,7 +1475,7 @@ function generarInforme() {
   const tasaMora = activos.length > 0 ? Math.round((enMora.length / activos.length) * 100) : 0;
 
   // ── Por frecuencia ──
-  const porFrec = { diario:[], semanal:[], quincenal:[] };
+  const porFrec = { diario:[], semanal:[], quincenal:[], mensual:[] };
   activos.forEach(c => { if (porFrec[c.frecuenciaPago]) porFrec[c.frecuenciaPago].push(c); });
 
   // ── Recaudo por método ──
@@ -1666,7 +1807,7 @@ ARQUITECTURA DEL SISTEMA:
 - Frontend: PWA (HTML/CSS/JS vanilla, localStorage para persistencia)
 - Lógica financiera: Interés plano sobre capital → Interés = Monto × (Tasa / 100) — la tasa se aplica UNA SOLA VEZ sobre el capital sin importar plazo ni frecuencia
 - Fórmula cuota: (Monto + Interés) / Número de cuotas
-- Frecuencias: diario (×1), semanal (×7), quincenal (×15)
+- Frecuencias: diario (×1), semanal (×7), quincenal (×15), mensual (×30)
 - Semáforo: verde=al día, amarillo=1-3d mora, naranja=4-9d mora, rojo=10+d mora (ajustado por frecuencia)
 
 FECHA ACTUAL: ${new Date().toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
